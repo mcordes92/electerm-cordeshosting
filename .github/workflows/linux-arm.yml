@@ -26,12 +26,29 @@ jobs:
     # - run: sleep 3
     - name: Build for Linux arm64
       run: |
-        sudo apt-get update
-        sudo apt-get install -y libgtk-3-dev libx11-dev libxkbfile-dev libsecret-1-dev fakeroot rpm
-        sudo apt-get install schroot sbuild debootstrap -y
-        sudo debootstrap --include=git,curl,gnupg,ca-certificates,crossbuild-essential-arm64 --arch=arm64 --foreign sid /srv/chroot/
-        sudo chroot /srv/chroot /debootstrap/debootstrap --second-stage
-        sudo rsync -av --delete /etc/apt/sources.list /srv/chroot/etc/apt/sources.list
+          sudo apt-get update -y && sudo apt-get install schroot sbuild debootstrap -y
+          sudo debootstrap --include=git,curl,gnupg,ca-certificates,crossbuild-essential-arm64,python-dev,python3-dev,libarchive-tools,cmake --variant=buildd --exclude=snapd --components=main,restricted,universe,multiverse --extractor=dpkg-deb bionic /build-chroot/
+          echo 'deb [arch=amd64,i386] http://archive.ubuntu.com/ubuntu bionic main restricted universe multiverse' | sudo tee /build-chroot/etc/apt/sources.list >/dev/null
+          echo 'deb [arch=arm64,armhf] http://ports.ubuntu.com/ubuntu-ports bionic main restricted universe multiverse' | sudo tee -a /build-chroot/etc/apt/sources.list >/dev/null
+          curl -s https://deb.nodesource.com/gpgkey/nodesource.gpg.key | gpg --dearmor | sudo tee /build-chroot/etc/apt/trusted.gpg.d/nodesource.gpg >/dev/null
+          echo 'deb http://deb.nodesource.com/node_16.x bionic main' | sudo tee /build-chroot/etc/apt/sources.list.d/nodesource.list >/dev/null
+          echo "[build-chroot]
+          description=Ubuntu 18.04 Build chroot
+          type=directory
+          directory=/build-chroot
+          root-groups=root,sudo
+          profile=buildd
+          personality=linux
+          union-type=overlay" | sudo tee /etc/schroot/chroot.d/build-chroot.pref >/dev/null
+          echo "/home /home none rw,bind 0 0" | sudo tee -a /etc/schroot/buildd/fstab >/dev/null
+    - name: Install node_modules & CrossBuild native modules for arm64
+      run: |
+          sudo schroot -c build-chroot -u root -- bash -c "apt-get update -y
+          dpkg --add-architecture arm64
+          apt-get install -y nodejs libfontconfig-dev:arm64 libsecret-1-dev:arm64 libnss3:arm64 libatk1.0-0:arm64 libatk-bridge2.0-0:arm64 libgdk-pixbuf2.0-0:arm64 libgtk-3-0:arm64 libgbm1:arm64
+          export CC=aarch64-linux-gnu-gcc CXX=aarch64-linux-gnu-g++ LD=aarch64-linux-gnu-ld
+          export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/lib/aarch64-linux-gnu/pkgconfig/
+          export ARCH=arm64 npm_config_arch=arm64 npm_config_target_arch=arm64
 
     # before_install:
     - run: npm install -g yarn
